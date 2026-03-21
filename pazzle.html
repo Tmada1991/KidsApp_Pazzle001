@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>かたちパズル</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        /* ブラウザのデフォルトのタッチ操作（スワイプバック等）を無効化 */
+        body {
+            overscroll-behavior-y: none;
+        }
+    </style>
+</head>
+
+<body class="bg-slate-100">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useCallback } = React;
+
+        // --- 効果音ユーティリティ (Web Audio API) ---
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        let audioInit = false;
+
+        const initAudio = () => {
+            if (!audioInit) {
+                if (audioCtx.state === 'suspended') {
+                    audioCtx.resume();
+                }
+                // iOS Safari等の音声ロックを解除するためのダミー音再生
+                const buffer = audioCtx.createBuffer(1, 1, 22050);
+                const source = audioCtx.createBufferSource();
+                source.buffer = buffer;
+                source.connect(audioCtx.destination);
+                source.start(0);
+                audioInit = true;
+            }
+        };
+
+        const playTone = (freq, type, duration, vol = 0.1) => {
+            try {
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+
+                gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                osc.start();
+                osc.stop(audioCtx.currentTime + duration);
+            } catch (e) {
+                console.warn("Audio failed", e);
+            }
+        };
+
+        const playPop = () => playTone(400, 'sine', 0.1, 0.2);
+        const playSnap = () => {
+            playTone(880, 'sine', 0.15, 0.2);
+            setTimeout(() => playTone(1100, 'sine', 0.2, 0.2), 50);
+        };
+        const playClear = () => {
+            [523.25, 659.25, 783.99, 1046.50].forEach((f, i) => {
+                setTimeout(() => playTone(f, 'square', 0.3, 0.1), i * 120);
+            });
+        };
+
+        // --- 基本となるステージデータ (13種類に拡張) ---
+        const BASE_STAGES = [
+            // --- かんたん ---
+            {
+                id: 'b1', difficulty: "かんたん", theme: "うさぎ", pieces: [
+                    { id: "p1", shape: "semicircle", color: "#ef4444", w: 140, h: 140, tgtX: 200, tgtY: 280, tgtRot: 180 },
+                    { id: "p2", shape: "rectangle", color: "#3b82f6", w: 40, h: 100, tgtX: 160, tgtY: 180, tgtRot: 0 },
+                    { id: "p3", shape: "rectangle", color: "#3b82f6", w: 40, h: 100, tgtX: 240, tgtY: 180, tgtRot: 0 }
+                ]
+            },
+            {
+                id: 'b2', difficulty: "かんたん", theme: "きのこ", pieces: [
+                    { id: "p1", shape: "semicircle", color: "#ef4444", w: 160, h: 160, tgtX: 200, tgtY: 180, tgtRot: 180 },
+                    { id: "p2", shape: "rectangle", color: "#facc15", w: 60, h: 100, tgtX: 200, tgtY: 260, tgtRot: 0 }
+                ]
+            },
+            {
+                id: 'b3', difficulty: "かんたん", theme: "アイス", pieces: [
+                    { id: "p1", shape: "semicircle", color: "#facc15", w: 120, h: 120, tgtX: 200, tgtY: 160, tgtRot: 180 },
+                    { id: "p2", shape: "triangle", color: "#f97316", w: 120, h: 160, tgtX: 200, tgtY: 260, tgtRot: 180 }
+                ]
+            },
+            {
+                id: 'b4', difficulty: "かんたん", theme: "くるま", pieces: [
+                    { id: "p1", shape: "rectangle", color: "#3b82f6", w: 160, h: 80, tgtX: 200, tgtY: 240, tgtRot: 0 },
+                    { id: "p2", shape: "circle", color: "#1f2937", w: 40, h: 40, tgtX: 150, tgtY: 280, tgtRot: 0 },
+                    { id: "p3", shape: "circle", color: "#1f2937", w: 40, h: 40, tgtX: 250, tgtY: 280, tgtRot: 0 }
+                ]
+            },
+
+            // --- ふつう ---
+            {
+                id: 'b5', difficulty: "ふつう", theme: "いえ", pieces: [
+                    { id: "p1", shape: "square", color: "#facc15", w: 140, h: 140, tgtX: 200, tgtY: 280, tgtRot: 0 },
+                    { id: "p2", shape: "triangle", color: "#ef4444", w: 160, h: 120, tgtX: 200, tgtY: 150, tgtRot: 0 },
+                    { id: "p3", shape: "rectangle", color: "#3b82f6", w: 40, h: 40, tgtX: 160, tgtY: 260, tgtRot: 0 },
+                    { id: "p4", shape: "rectangle", color: "#3b82f6", w: 40, h: 40, tgtX: 240, tgtY: 260, tgtRot: 0 },
+                    { id: "p5", shape: "rectangle", color: "#22c55e", w: 40, h: 60, tgtX: 200, tgtY: 320, tgtRot: 0 }
+                ]
+            },
+            {
+                id: 'b6', difficulty: "ふつう", theme: "さかな", pieces: [
+                    { id: "p1", shape: "triangle", color: "#ef4444", w: 120, h: 120, tgtX: 220, tgtY: 200, tgtRot: 90 },
+                    { id: "p2", shape: "triangle", color: "#3b82f6", w: 80, h: 80, tgtX: 120, tgtY: 200, tgtRot: 270 },
+                    { id: "p3", shape: "triangle", color: "#facc15", w: 60, h: 60, tgtX: 220, tgtY: 110, tgtRot: 0 },
+                    { id: "p4", shape: "triangle", color: "#facc15", w: 60, h: 60, tgtX: 220, tgtY: 290, tgtRot: 180 },
+                    { id: "p5", shape: "circle", color: "#1f2937", w: 20, h: 20, tgtX: 260, tgtY: 200, tgtRot: 0 }
+                ]
+            },
+            {
+                id: 'b7', difficulty: "ふつう", theme: "き", pieces: [
+                    { id: "p1", shape: "circle", color: "#22c55e", w: 100, h: 100, tgtX: 200, tgtY: 150, tgtRot: 0 },
+                    { id: "p2", shape: "circle", color: "#22c55e", w: 80, h: 80, tgtX: 150, tgtY: 200, tgtRot: 0 },
+                    { id: "p3", shape: "circle", color: "#22c55e", w: 80, h: 80, tgtX: 250, tgtY: 200, tgtRot: 0 },
+                    { id: "p4", shape: "rectangle", color: "#f97316", w: 40, h: 120, tgtX: 200, tgtY: 280, tgtRot: 0 }
+                ]
+            },
+            {
+                id: 'b8', difficulty: "ふつう", theme: "ちょうちょ", pieces: [
+                    { id: "p1", shape: "rectangle", color: "#facc15", w: 20, h: 100, tgtX: 200, tgtY: 200, tgtRot: 0 },
+                    { id: "p2", shape: "triangle", color: "#ec4899", w: 80, h: 80, tgtX: 150, tgtY: 160, tgtRot: 90 },
+                    { id: "p3", shape: "triangle", color: "#ec4899", w: 80, h: 80, tgtX: 250, tgtY: 160, tgtRot: 270 },
+                    { id: "p4", shape: "triangle", color: "#3b82f6", w: 60, h: 60, tgtX: 160, tgtY: 230, tgtRot: 180 },
+                    { id: "p5", shape: "triangle", color: "#3b82f6", w: 60, h: 60, tgtX: 240, tgtY: 230, tgtRot: 0 }
+                ]
+            },
+
+            // --- むずかしい ---
+            {
+                id: 'b9', difficulty: "むずかしい", theme: "ふね", pieces: [
+                    { id: "p1", shape: "semicircle", color: "#ef4444", w: 160, h: 160, tgtX: 200, tgtY: 300, tgtRot: 0 },
+                    { id: "p2", shape: "rectangle", color: "#22c55e", w: 20, h: 120, tgtX: 200, tgtY: 180, tgtRot: 0 },
+                    { id: "p3", shape: "triangle", color: "#3b82f6", w: 100, h: 100, tgtX: 150, tgtY: 180, tgtRot: 0 },
+                    { id: "p4", shape: "triangle", color: "#facc15", w: 100, h: 100, tgtX: 250, tgtY: 180, tgtRot: 180 },
+                    { id: "p5", shape: "circle", color: "#f97316", w: 40, h: 40, tgtX: 160, tgtY: 280, tgtRot: 0 },
+                    { id: "p6", shape: "circle", color: "#f97316", w: 40, h: 40, tgtX: 200, tgtY: 280, tgtRot: 0 },
+                    { id: "p7", shape: "circle", color: "#f97316", w: 40, h: 40, tgtX: 240, tgtY: 280, tgtRot: 0 }
+                ]
+            },
+            {
+                id: 'b10', difficulty: "むずかしい", theme: "ロケット", pieces: [
+                    { id: "p1", shape: "rectangle", color: "#3b82f6", w: 80, h: 140, tgtX: 200, tgtY: 220, tgtRot: 0 },
+                    { id: "p2", shape: "triangle", color: "#ef4444", w: 80, h: 80, tgtX: 200, tgtY: 110, tgtRot: 0 },
+                    { id: "p3", shape: "triangle", color: "#facc15", w: 60, h: 80, tgtX: 130, tgtY: 250, tgtRot: 270 },
+                    { id: "p4", shape: "triangle", color: "#facc15", w: 60, h: 80, tgtX: 270, tgtY: 250, tgtRot: 90 },
+                    { id: "p5", shape: "circle", color: "#22c55e", w: 40, h: 40, tgtX: 200, tgtY: 180, tgtRot: 0 },
+                    { id: "p6", shape: "circle", color: "#22c55e", w: 40, h: 40, tgtX: 200, tgtY: 240, tgtRot: 0 },
+                    { id: "p7", shape: "triangle", color: "#f97316", w: 60, h: 60, tgtX: 200, tgtY: 320, tgtRot: 180 }
+                ]
+            },
+            {
+                id: 'b11', difficulty: "むずかしい", theme: "ロボット", pieces: [
+                    { id: "p1", shape: "square", color: "#ef4444", w: 80, h: 80, tgtX: 200, tgtY: 140, tgtRot: 0 },
+                    { id: "p2", shape: "rectangle", color: "#3b82f6", w: 100, h: 120, tgtX: 200, tgtY: 250, tgtRot: 0 },
+                    { id: "p3", shape: "rectangle", color: "#facc15", w: 20, h: 80, tgtX: 130, tgtY: 230, tgtRot: 45 },
+                    { id: "p4", shape: "rectangle", color: "#facc15", w: 20, h: 80, tgtX: 270, tgtY: 230, tgtRot: 315 },
+                    { id: "p5", shape: "rectangle", color: "#22c55e", w: 30, h: 60, tgtX: 170, tgtY: 340, tgtRot: 0 },
+                    { id: "p6", shape: "rectangle", color: "#22c55e", w: 30, h: 60, tgtX: 230, tgtY: 340, tgtRot: 0 },
+                    { id: "p7", shape: "circle", color: "#f97316", w: 20, h: 20, tgtX: 180, tgtY: 130, tgtRot: 0 },
+                    { id: "p8", shape: "circle", color: "#f97316", w: 20, h: 20, tgtX: 220, tgtY: 130, tgtRot: 0 }
+                ]
+            },
+            {
+                id: 'b12', difficulty: "むずかしい", theme: "はな", pieces: [
+                    { id: "p1", shape: "circle", color: "#facc15", w: 40, h: 40, tgtX: 200, tgtY: 160, tgtRot: 0 },
+                    { id: "p2", shape: "semicircle", color: "#ec4899", w: 60, h: 60, tgtX: 200, tgtY: 110, tgtRot: 180 },
+                    { id: "p3", shape: "semicircle", color: "#ec4899", w: 60, h: 60, tgtX: 200, tgtY: 210, tgtRot: 0 },
+                    { id: "p4", shape: "semicircle", color: "#ec4899", w: 60, h: 60, tgtX: 150, tgtY: 160, tgtRot: 90 },
+                    { id: "p5", shape: "semicircle", color: "#ec4899", w: 60, h: 60, tgtX: 250, tgtY: 160, tgtRot: 270 },
+                    { id: "p6", shape: "rectangle", color: "#22c55e", w: 20, h: 100, tgtX: 200, tgtY: 270, tgtRot: 0 },
+                    { id: "p7", shape: "triangle", color: "#22c55e", w: 40, h: 40, tgtX: 170, tgtY: 260, tgtRot: 90 },
+                    { id: "p8", shape: "triangle", color: "#22c55e", w: 40, h: 40, tgtX: 230, tgtY: 260, tgtRot: 270 }
+                ]
+            },
+            {
+                id: 'b13', difficulty: "むずかしい", theme: "テトリス", pieces: [
+                    { id: "p1", shape: "tetris-t", color: "#facc15", w: 120, h: 80, tgtX: 200, tgtY: 160, tgtRot: 0 },
+                    { id: "p2", shape: "tetris-l", color: "#3b82f6", w: 80, h: 120, tgtX: 180, tgtY: 260, tgtRot: 0 },
+                    { id: "p3", shape: "square", color: "#ef4444", w: 40, h: 40, tgtX: 240, tgtY: 220, tgtRot: 0 },
+                    { id: "p4", shape: "circle", color: "#22c55e", w: 20, h: 20, tgtX: 240, tgtY: 280, tgtRot: 0 }
+                ]
+            }
+        ];
+
+        // --- 100問ジェネレーター (プレビュー用) ---
+        const COLOR_PALETTE = ["#ef4444", "#3b82f6", "#facc15", "#22c55e", "#f97316", "#a855f7", "#ec4899", "#14b8a6"];
+
+        const generate100Stages = () => {
+            const stages = [];
+            let idCounter = 1;
+            const targetCounts = { 'かんたん': 30, 'ふつう': 40, 'むずかしい': 30 };
+            const currentCounts = { 'かんたん': 0, 'ふつう': 0, 'むずかしい': 0 };
+
+            while (stages.length < 100) {
+                for (const base of BASE_STAGES) {
+                    if (currentCounts[base.difficulty] < targetCounts[base.difficulty]) {
+                        const variationNum = Math.floor(currentCounts[base.difficulty] / BASE_STAGES.filter(s => s.difficulty === base.difficulty).length) + 1;
+
+                        const pieces = base.pieces.map(p => {
+                            let newColor = p.color;
+                            if (variationNum > 1 && p.color !== "#1f2937" && p.color !== "#d1d5db" && p.color !== "#94a3b8") {
+                                const colorIdx = COLOR_PALETTE.indexOf(p.color);
+                                if (colorIdx !== -1) {
+                                    newColor = COLOR_PALETTE[(colorIdx + variationNum) % COLOR_PALETTE.length];
+                                }
+                            }
+                            return { ...p, color: newColor };
+                        });
+
+                        stages.push({
+                            id: idCounter++,
+                            difficulty: base.difficulty,
+                            theme: variationNum === 1 ? base.theme : `${base.theme} ${variationNum}`,
+                            pieces: pieces
+                        });
+                        currentCounts[base.difficulty]++;
+
+                        if (stages.length >= 100) break;
+                    }
+                }
+            }
+            return stages;
+        };
+
+        const STAGES = generate100Stages();
+
+        const DIFFICULTY_COLORS = {
+            'かんたん': '#4ade80',
+            'ふつう': '#fbbf24',
+            'むずかしい': '#f87171'
+        };
+
+        // --- SVG図形コンポーネント ---
+        const PieceShape = ({ piece, isTarget, isForegroundTarget }) => {
+            const { shape, w, h, color } = piece;
+            const fill = isForegroundTarget ? "rgba(255,255,255,0.4)" : (isTarget ? "#cbd5e1" : color);
+            const stroke = isTarget ? (isForegroundTarget ? "#475569" : "#94a3b8") : "rgba(0,0,0,0.15)";
+            const strokeWidth = isTarget ? (isForegroundTarget ? 4 : 3) : 4;
+            const strokeDasharray = isTarget ? "6,6" : "none";
+
+            let pathData = "";
+            if (shape === 'square' || shape === 'rectangle') {
+                return <rect x={-w / 2} y={-h / 2} width={w} height={h} fill={fill} stroke={stroke} strokeWidth={strokeWidth} strokeDasharray={strokeDasharray} rx="12" />;
+            } else if (shape === 'circle') {
+                return <circle cx={0} cy={0} r={w / 2} fill={fill} stroke={stroke} strokeWidth={strokeWidth} strokeDasharray={strokeDasharray} />;
+            } else if (shape === 'triangle') {
+                pathData = `M 0,${-h / 2} L ${w / 2},${h / 2} L ${-w / 2},${h / 2} Z`;
+            } else if (shape === 'semicircle') {
+                const r = w / 2;
+                pathData = `M ${-r},0 A ${r},${r} 0 0,0 ${r},0 Z`;
+            } else if (shape === 'tetris-t') {
+                const b = w / 3;
+                pathData = `M ${-w / 2},${-h / 2} L ${w / 2},${-h / 2} L ${w / 2},${-h / 2 + b} L ${b / 2},${-h / 2 + b} L ${b / 2},${h / 2} L ${-b / 2},${h / 2} L ${-b / 2},${-h / 2 + b} L ${-w / 2},${-h / 2 + b} Z`;
+            } else if (shape === 'tetris-l') {
+                const b = w / 2;
+                pathData = `M ${-w / 2},${-h / 2} L ${-w / 2 + b},${-h / 2} L ${-w / 2 + b},${h / 2 - b} L ${w / 2},${h / 2 - b} L ${w / 2},${h / 2} L ${-w / 2},${h / 2} Z`;
+            }
+
+            return <path d={pathData} fill={fill} stroke={stroke} strokeWidth={strokeWidth} strokeLinejoin="round" strokeDasharray={strokeDasharray} />;
+        };
+
+        const Eyes = () => (
+            <g className="pointer-events-none">
+                <circle cx="-14" cy="-5" r="8" fill="white" />
+                <circle cx="-14" cy="-5" r="3" fill="#334155" />
+                <circle cx="14" cy="-5" r="8" fill="white" />
+                <circle cx="14" cy="-5" r="3" fill="#334155" />
+            </g>
+        );
+
+        const MiniPreview = ({ pieces }) => (
+            <svg viewBox="0 80 400 300" className="w-full h-24 drop-shadow-sm pointer-events-none">
+                {pieces.map(p => (
+                    <g key={p.id} transform={`translate(${p.tgtX}, ${p.tgtY}) rotate(${p.tgtRot})`}>
+                        <PieceShape piece={p} isTarget={false} />
+                    </g>
+                ))}
+            </svg>
+        );
+
+        // --- メインコンポーネント ---
+        function App() {
+            const [gameState, setGameState] = useState('title');
+            const [selectedDifficulty, setSelectedDifficulty] = useState(null);
+            const [currentStage, setCurrentStage] = useState(null);
+            const [pieces, setPieces] = useState([]);
+            const [dragState, setDragState] = useState(null);
+            const [particles, setParticles] = useState([]);
+
+            const startGame = (stage) => {
+                initAudio();
+                setCurrentStage(stage);
+
+                const cols = 4;
+                const startX = 60;
+                const startY = 440;
+                const spacingX = 90;
+                const spacingY = 90;
+
+                const initPieces = stage.pieces.map((p, index) => {
+                    const col = index % cols;
+                    const row = Math.floor(index / cols);
+                    return {
+                        ...p,
+                        locked: false,
+                        x: startX + col * spacingX,
+                        y: startY + row * spacingY,
+                        rot: Math.floor(Math.random() * 8) * 45
+                    };
+                });
+
+                setPieces(initPieces);
+                setGameState('playing');
+                setParticles([]);
+            };
+
+            const handleDifficultySelect = (diff) => {
+                initAudio();
+                setSelectedDifficulty(diff);
+                setGameState('stageSelect');
+            };
+
+            const backToTitle = () => {
+                setGameState('title');
+                setSelectedDifficulty(null);
+                setCurrentStage(null);
+            };
+
+            const backToStageSelect = () => {
+                setGameState('stageSelect');
+                setCurrentStage(null);
+            };
+
+            const handleNextStage = () => {
+                const stagesInDiff = STAGES.filter(s => s.difficulty === currentStage.difficulty);
+                const currentIndex = stagesInDiff.findIndex(s => s.id === currentStage.id);
+                if (currentIndex + 1 < stagesInDiff.length) {
+                    startGame(stagesInDiff[currentIndex + 1]);
+                } else {
+                    backToStageSelect();
+                }
+            };
+
+            const triggerSnapEffect = (x, y) => {
+                const newParticles = Array.from({ length: 6 }).map((_, i) => ({
+                    id: Date.now() + i,
+                    x, y,
+                    angle: (i * 60) * (Math.PI / 180),
+                }));
+                setParticles(prev => [...prev, ...newParticles]);
+                setTimeout(() => {
+                    setParticles(prev => prev.filter(p => !newParticles.find(np => np.id === p.id)));
+                }, 600);
+            };
+
+            const handlePointerDown = (e, pieceId) => {
+                initAudio();
+                if (gameState !== 'playing') return;
+                if (dragState) return;
+
+                const piece = pieces.find(p => p.id === pieceId);
+                if (piece.locked) return;
+
+                e.target.setPointerCapture(e.pointerId);
+                setDragState({
+                    pieceId,
+                    pointerId: e.pointerId,
+                    startX: e.clientX,
+                    startY: e.clientY,
+                    initPieceX: piece.x,
+                    initPieceY: piece.y,
+                    hasMoved: false
+                });
+            };
+
+            const handlePointerMove = useCallback((e) => {
+                if (!dragState || dragState.pointerId !== e.pointerId) return;
+
+                const dx = e.clientX - dragState.startX;
+                const dy = e.clientY - dragState.startY;
+
+                if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+                    setDragState(prev => prev ? { ...prev, hasMoved: true } : null);
+                }
+
+                setPieces(prev => prev.map(p => {
+                    if (p.id === dragState.pieceId) {
+                        const newX = Math.max(30, Math.min(370, dragState.initPieceX + dx));
+                        const newY = Math.max(30, Math.min(570, dragState.initPieceY + dy));
+                        return { ...p, x: newX, y: newY };
+                    }
+                    return p;
+                }));
+            }, [dragState]);
+
+            const handlePointerUp = useCallback((e) => {
+                if (!dragState || dragState.pointerId !== e.pointerId) return;
+
+                const currentPiece = pieces.find(p => p.id === dragState.pieceId);
+                let finalRot = currentPiece.rot;
+
+                if (!dragState.hasMoved) {
+                    playPop();
+                    finalRot = (finalRot + 45) % 360;
+                }
+
+                const SNAP_THRESHOLD = 50;
+                let finalRotNorm = ((finalRot % 360) + 360) % 360;
+                let snappedTarget = null;
+
+                const sameShapeTargets = pieces.filter(p =>
+                    !p.locked &&
+                    p.shape === currentPiece.shape &&
+                    p.w === currentPiece.w &&
+                    p.h === currentPiece.h
+                );
+
+                for (const targetPiece of sameShapeTargets) {
+                    const dist = Math.hypot(currentPiece.x - targetPiece.tgtX, currentPiece.y - targetPiece.tgtY);
+                    if (dist < SNAP_THRESHOLD) {
+                        const targetRotNorm = ((targetPiece.tgtRot % 360) + 360) % 360;
+                        let rotMatch = false;
+
+                        if (currentPiece.shape === 'circle') {
+                            rotMatch = true;
+                        } else if (currentPiece.shape === 'square') {
+                            rotMatch = Math.abs(finalRotNorm - targetRotNorm) % 90 === 0;
+                        } else if (currentPiece.shape === 'rectangle') {
+                            rotMatch = Math.abs(finalRotNorm - targetRotNorm) % 180 === 0;
+                        } else {
+                            rotMatch = finalRotNorm === targetRotNorm;
+                        }
+
+                        if (rotMatch) {
+                            snappedTarget = targetPiece;
+                            break;
+                        }
+                    }
+                }
+
+                if (snappedTarget) {
+                    playSnap();
+                    triggerSnapEffect(snappedTarget.tgtX, snappedTarget.tgtY);
+
+                    setPieces(prev => prev.map(p => {
+                        if (p.id === currentPiece.id) {
+                            return {
+                                ...p,
+                                x: snappedTarget.tgtX,
+                                y: snappedTarget.tgtY,
+                                rot: finalRot,
+                                locked: true,
+                                tgtX: snappedTarget.tgtX,
+                                tgtY: snappedTarget.tgtY,
+                                tgtRot: snappedTarget.tgtRot
+                            };
+                        } else if (p.id === snappedTarget.id) {
+                            return {
+                                ...p,
+                                tgtX: currentPiece.tgtX,
+                                tgtY: currentPiece.tgtY,
+                                tgtRot: currentPiece.tgtRot
+                            };
+                        }
+                        return p;
+                    }));
+                } else {
+                    setPieces(prev => prev.map(p => p.id === dragState.pieceId ? { ...p, rot: finalRot } : p));
+                }
+
+                setDragState(null);
+                try {
+                    e.target.releasePointerCapture(e.pointerId);
+                } catch (err) { }
+            }, [dragState, pieces]);
+
+            useEffect(() => {
+                if (gameState === 'playing' && pieces.length > 0 && pieces.every(p => p.locked)) {
+                    setTimeout(() => {
+                        playClear();
+                        setGameState('cleared');
+                    }, 500);
+                }
+            }, [pieces, gameState]);
+
+            const sortedPieces = [...pieces].sort((a, b) => {
+                if (a.locked && !b.locked) return -1;
+                if (!a.locked && b.locked) return 1;
+                const isAActive = dragState?.pieceId === a.id;
+                const isBActive = dragState?.pieceId === b.id;
+                if (isAActive && !isBActive) return 1;
+                if (!isAActive && isBActive) return -1;
+                return 0;
+            });
+
+            const availableStages = selectedDifficulty ? STAGES.filter(s => s.difficulty === selectedDifficulty) : [];
+            const hasNextStage = currentStage && STAGES.filter(s => s.difficulty === currentStage.difficulty).findIndex(s => s.id === currentStage.id) < STAGES.filter(s => s.difficulty === currentStage.difficulty).length - 1;
+
+            return (
+                <div className="w-full h-screen bg-slate-100 flex justify-center items-center overflow-hidden font-sans select-none touch-none">
+                    <div className="w-full max-w-[400px] h-[600px] bg-slate-800 relative shadow-2xl overflow-hidden flex flex-col md:rounded-2xl">
+
+                        {/* --- タイトル画面 --- */}
+                        {gameState === 'title' && (
+                            <div className="flex flex-col items-center justify-center h-full p-6 space-y-8 bg-slate-800">
+                                <h1 className="text-4xl font-black text-white tracking-wider">かたちパズル</h1>
+                                <p className="text-slate-300 font-bold text-lg">あそぶ レベル を えらんでね</p>
+                                <div className="flex flex-col w-full space-y-4">
+                                    {['かんたん', 'ふつう', 'むずかしい'].map(diff => (
+                                        <button
+                                            key={diff}
+                                            onClick={() => handleDifficultySelect(diff)}
+                                            className="w-full py-5 rounded-full text-2xl font-bold text-slate-800 shadow-md active:scale-95 transition-transform"
+                                            style={{ backgroundColor: DIFFICULTY_COLORS[diff] }}
+                                        >
+                                            {diff}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* --- ステージ選択画面 --- */}
+                        {gameState === 'stageSelect' && (
+                            <div className="flex flex-col h-full bg-slate-800">
+                                <div className="flex items-center p-4 border-b-4 border-slate-700">
+                                    <button onClick={backToTitle} className="px-4 py-2 bg-slate-600 text-white font-bold rounded-full active:scale-95">もどる</button>
+                                    <div className="flex-1 text-center text-xl font-bold" style={{ color: DIFFICULTY_COLORS[selectedDifficulty] }}>
+                                        {selectedDifficulty}
+                                    </div>
+                                    <div className="w-16"></div>
+                                </div>
+                                <div className="flex-1 p-6 grid grid-cols-2 gap-4 overflow-y-auto content-start">
+                                    <div className="col-span-2 text-center text-slate-300 font-bold mb-2">どれを つくる？</div>
+                                    {availableStages.map((stage) => (
+                                        <button
+                                            key={stage.id}
+                                            onClick={() => startGame(stage)}
+                                            className="flex flex-col items-center justify-center p-4 bg-slate-700 rounded-2xl shadow-sm border-4 active:scale-95 transition-transform"
+                                            style={{ borderColor: DIFFICULTY_COLORS[selectedDifficulty] }}
+                                        >
+                                            <MiniPreview pieces={stage.pieces} />
+                                            <span className="mt-2 text-sm font-bold text-white">{stage.theme}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* --- プレイ画面 / クリア画面 --- */}
+                        {(gameState === 'playing' || gameState === 'cleared') && (
+                            <>
+                                <div className="flex justify-between items-center p-4 bg-slate-800 border-b-4 border-slate-700 z-10">
+                                    <button
+                                        onClick={backToStageSelect}
+                                        className="px-4 py-2 bg-slate-600 text-white font-bold rounded-full active:scale-95"
+                                    >
+                                        もどる
+                                    </button>
+                                    <div className="text-xl font-bold truncate mx-2" style={{ color: DIFFICULTY_COLORS[currentStage.difficulty] }}>
+                                        {currentStage.theme}
+                                    </div>
+                                    <button
+                                        onClick={() => startGame(currentStage)}
+                                        className="px-4 py-2 bg-slate-600 text-white font-bold rounded-full active:scale-95 flex-shrink-0"
+                                    >
+                                        やりなおす
+                                    </button>
+                                </div>
+
+                                <div
+                                    className="flex-1 relative bg-slate-900"
+                                    onPointerMove={handlePointerMove}
+                                    onPointerUp={handlePointerUp}
+                                    onPointerLeave={handlePointerUp}
+                                >
+                                    <svg viewBox="0 0 400 600" className="w-full h-full absolute top-0 left-0">
+                                        <circle cx="200" cy="220" r="160" fill="#fef08a" className="pointer-events-none" />
+
+                                        <rect x="0" y="380" width="400" height="220" fill="rgba(255,255,255,0.05)" className="pointer-events-none" />
+
+                                        <g className={gameState === 'cleared' ? 'animate-bounce origin-center' : ''} style={{ transformOrigin: '200px 250px' }}>
+
+                                            <g className="silhouettes-bg pointer-events-none">
+                                                {pieces.map(p => (
+                                                    <g key={`tgt-${p.id}`} transform={`translate(${p.tgtX}, ${p.tgtY}) rotate(${p.tgtRot})`}>
+                                                        <PieceShape piece={p} isTarget />
+                                                    </g>
+                                                ))}
+                                            </g>
+
+                                            {pieces.filter(p => p.locked).map(p => (
+                                                <g
+                                                    key={p.id}
+                                                    transform={`translate(${p.x}, ${p.y}) rotate(${p.rot})`}
+                                                    onPointerDown={(e) => handlePointerDown(e, p.id)}
+                                                    className="cursor-pointer"
+                                                    style={{ transition: 'transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)' }}
+                                                >
+                                                    <PieceShape piece={p} isTarget={false} />
+                                                    <Eyes />
+                                                </g>
+                                            ))}
+
+                                            <g className="silhouettes-fg pointer-events-none">
+                                                {pieces.filter(p => !p.locked).map(p => (
+                                                    <g key={`tgt-fg-${p.id}`} transform={`translate(${p.tgtX}, ${p.tgtY}) rotate(${p.tgtRot})`}>
+                                                        <PieceShape piece={p} isTarget isForegroundTarget />
+                                                    </g>
+                                                ))}
+                                            </g>
+
+                                            {sortedPieces.filter(p => !p.locked).map(p => (
+                                                <g
+                                                    key={p.id}
+                                                    transform={`translate(${p.x}, ${p.y}) rotate(${p.rot})`}
+                                                    onPointerDown={(e) => handlePointerDown(e, p.id)}
+                                                    className="cursor-pointer"
+                                                    style={{ transition: 'none' }}
+                                                >
+                                                    <PieceShape piece={p} isTarget={false} />
+                                                    <Eyes />
+                                                </g>
+                                            ))}
+                                        </g>
+                                    </svg>
+
+                                    {particles.map(p => (
+                                        <div
+                                            key={p.id}
+                                            className="absolute w-4 h-4 bg-white rounded-full pointer-events-none shadow-lg"
+                                            style={{
+                                                left: p.x - 8,
+                                                top: p.y - 8,
+                                                transform: `translate(${Math.cos(p.angle) * 40}px, ${Math.sin(p.angle) * 40}px) scale(0)`,
+                                                opacity: 0,
+                                                animation: 'pop-particle 0.5s ease-out forwards'
+                                            }}
+                                        />
+                                    ))}
+
+                                    {gameState === 'cleared' && (
+                                        <div className="absolute inset-0 bg-slate-900/80 flex flex-col items-center justify-center z-20 backdrop-blur-sm">
+                                            <h2 className="text-5xl font-black text-orange-400 mb-8 drop-shadow-lg" style={{ WebkitTextStroke: '1px white' }}>
+                                                せいかい！
+                                            </h2>
+                                            <div className="flex space-x-4 mt-4">
+                                                <button
+                                                    onClick={backToStageSelect}
+                                                    className="px-6 py-4 bg-slate-700 text-white text-xl font-bold rounded-full shadow-md active:scale-95"
+                                                >
+                                                    もどる
+                                                </button>
+                                                {hasNextStage ? (
+                                                    <button
+                                                        onClick={handleNextStage}
+                                                        className="px-8 py-4 bg-orange-500 text-white text-2xl font-bold rounded-full shadow-lg active:scale-95 animate-pulse"
+                                                    >
+                                                        つぎへ
+                                                    </button>
+                                                ) : (
+                                                    <button
+                                                        onClick={backToStageSelect}
+                                                        className="px-8 py-4 bg-orange-500 text-white text-2xl font-bold rounded-full shadow-lg active:scale-95"
+                                                    >
+                                                        クリア！
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </>
+                        )}
+                    </div>
+
+                    <style dangerouslySetInnerHTML={{
+                        __html: `
+            @keyframes pop-particle {
+              0% { transform: translate(0, 0) scale(1); opacity: 1; }
+              100% { opacity: 0; }
+            }
+          `}} />
+                </div>
+            );
+        }
+
+        // --- Reactのレンダリング ---
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+
+</html>
