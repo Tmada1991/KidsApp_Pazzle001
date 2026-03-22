@@ -32,7 +32,6 @@
                 if (audioCtx.state === 'suspended') {
                     audioCtx.resume();
                 }
-                // iOS Safari等の音声ロックを解除するためのダミー音再生
                 const buffer = audioCtx.createBuffer(1, 1, 22050);
                 const source = audioCtx.createBufferSource();
                 source.buffer = buffer;
@@ -74,171 +73,147 @@
             });
         };
 
-        // --- 基本となるステージデータ (13種類に拡張) ---
-        const BASE_STAGES = [
-            // --- かんたん ---
-            {
-                id: 'b1', difficulty: "かんたん", theme: "うさぎ", pieces: [
-                    { id: "p1", shape: "semicircle", color: "#ef4444", w: 140, h: 140, tgtX: 200, tgtY: 280, tgtRot: 180 },
-                    { id: "p2", shape: "rectangle", color: "#3b82f6", w: 40, h: 100, tgtX: 160, tgtY: 180, tgtRot: 0 },
-                    { id: "p3", shape: "rectangle", color: "#3b82f6", w: 40, h: 100, tgtX: 240, tgtY: 180, tgtRot: 0 }
-                ]
-            },
-            {
-                id: 'b2', difficulty: "かんたん", theme: "きのこ", pieces: [
-                    { id: "p1", shape: "semicircle", color: "#ef4444", w: 160, h: 160, tgtX: 200, tgtY: 180, tgtRot: 180 },
-                    { id: "p2", shape: "rectangle", color: "#facc15", w: 60, h: 100, tgtX: 200, tgtY: 260, tgtRot: 0 }
-                ]
-            },
-            {
-                id: 'b3', difficulty: "かんたん", theme: "アイス", pieces: [
-                    { id: "p1", shape: "semicircle", color: "#facc15", w: 120, h: 120, tgtX: 200, tgtY: 160, tgtRot: 180 },
-                    { id: "p2", shape: "triangle", color: "#f97316", w: 120, h: 160, tgtX: 200, tgtY: 260, tgtRot: 180 }
-                ]
-            },
-            {
-                id: 'b4', difficulty: "かんたん", theme: "くるま", pieces: [
-                    { id: "p1", shape: "rectangle", color: "#3b82f6", w: 160, h: 80, tgtX: 200, tgtY: 240, tgtRot: 0 },
-                    { id: "p2", shape: "circle", color: "#1f2937", w: 40, h: 40, tgtX: 150, tgtY: 280, tgtRot: 0 },
-                    { id: "p3", shape: "circle", color: "#1f2937", w: 40, h: 40, tgtX: 250, tgtY: 280, tgtRot: 0 }
-                ]
-            },
+        // --- 完全にオリジナルの99問 (各難易度33問) の生データ ---
+        // SHAPES: 0=square, 1=rectangle, 2=circle, 3=triangle, 4=semicircle
+        const SHAPES = ["square", "rectangle", "circle", "triangle", "semicircle"];
 
-            // --- ふつう ---
-            {
-                id: 'b5', difficulty: "ふつう", theme: "いえ", pieces: [
-                    { id: "p1", shape: "square", color: "#facc15", w: 140, h: 140, tgtX: 200, tgtY: 280, tgtRot: 0 },
-                    { id: "p2", shape: "triangle", color: "#ef4444", w: 160, h: 120, tgtX: 200, tgtY: 150, tgtRot: 0 },
-                    { id: "p3", shape: "rectangle", color: "#3b82f6", w: 40, h: 40, tgtX: 160, tgtY: 260, tgtRot: 0 },
-                    { id: "p4", shape: "rectangle", color: "#3b82f6", w: 40, h: 40, tgtX: 240, tgtY: 260, tgtRot: 0 },
-                    { id: "p5", shape: "rectangle", color: "#22c55e", w: 40, h: 60, tgtX: 200, tgtY: 320, tgtRot: 0 }
-                ]
-            },
-            {
-                id: 'b6', difficulty: "ふつう", theme: "さかな", pieces: [
-                    { id: "p1", shape: "triangle", color: "#ef4444", w: 120, h: 120, tgtX: 220, tgtY: 200, tgtRot: 90 },
-                    { id: "p2", shape: "triangle", color: "#3b82f6", w: 80, h: 80, tgtX: 120, tgtY: 200, tgtRot: 270 },
-                    { id: "p3", shape: "triangle", color: "#facc15", w: 60, h: 60, tgtX: 220, tgtY: 110, tgtRot: 0 },
-                    { id: "p4", shape: "triangle", color: "#facc15", w: 60, h: 60, tgtX: 220, tgtY: 290, tgtRot: 180 },
-                    { id: "p5", shape: "circle", color: "#1f2937", w: 20, h: 20, tgtX: 260, tgtY: 200, tgtRot: 0 }
-                ]
-            },
-            {
-                id: 'b7', difficulty: "ふつう", theme: "き", pieces: [
-                    { id: "p1", shape: "circle", color: "#22c55e", w: 100, h: 100, tgtX: 200, tgtY: 150, tgtRot: 0 },
-                    { id: "p2", shape: "circle", color: "#22c55e", w: 80, h: 80, tgtX: 150, tgtY: 200, tgtRot: 0 },
-                    { id: "p3", shape: "circle", color: "#22c55e", w: 80, h: 80, tgtX: 250, tgtY: 200, tgtRot: 0 },
-                    { id: "p4", shape: "rectangle", color: "#f97316", w: 40, h: 120, tgtX: 200, tgtY: 280, tgtRot: 0 }
-                ]
-            },
-            {
-                id: 'b8', difficulty: "ふつう", theme: "ちょうちょ", pieces: [
-                    { id: "p1", shape: "rectangle", color: "#facc15", w: 20, h: 100, tgtX: 200, tgtY: 200, tgtRot: 0 },
-                    { id: "p2", shape: "triangle", color: "#ec4899", w: 80, h: 80, tgtX: 150, tgtY: 160, tgtRot: 90 },
-                    { id: "p3", shape: "triangle", color: "#ec4899", w: 80, h: 80, tgtX: 250, tgtY: 160, tgtRot: 270 },
-                    { id: "p4", shape: "triangle", color: "#3b82f6", w: 60, h: 60, tgtX: 160, tgtY: 230, tgtRot: 180 },
-                    { id: "p5", shape: "triangle", color: "#3b82f6", w: 60, h: 60, tgtX: 240, tgtY: 230, tgtRot: 0 }
-                ]
-            },
-
-            // --- むずかしい ---
-            {
-                id: 'b9', difficulty: "むずかしい", theme: "ふね", pieces: [
-                    { id: "p1", shape: "semicircle", color: "#ef4444", w: 160, h: 160, tgtX: 200, tgtY: 300, tgtRot: 0 },
-                    { id: "p2", shape: "rectangle", color: "#22c55e", w: 20, h: 120, tgtX: 200, tgtY: 180, tgtRot: 0 },
-                    { id: "p3", shape: "triangle", color: "#3b82f6", w: 100, h: 100, tgtX: 150, tgtY: 180, tgtRot: 0 },
-                    { id: "p4", shape: "triangle", color: "#facc15", w: 100, h: 100, tgtX: 250, tgtY: 180, tgtRot: 180 },
-                    { id: "p5", shape: "circle", color: "#f97316", w: 40, h: 40, tgtX: 160, tgtY: 280, tgtRot: 0 },
-                    { id: "p6", shape: "circle", color: "#f97316", w: 40, h: 40, tgtX: 200, tgtY: 280, tgtRot: 0 },
-                    { id: "p7", shape: "circle", color: "#f97316", w: 40, h: 40, tgtX: 240, tgtY: 280, tgtRot: 0 }
-                ]
-            },
-            {
-                id: 'b10', difficulty: "むずかしい", theme: "ロケット", pieces: [
-                    { id: "p1", shape: "rectangle", color: "#3b82f6", w: 80, h: 140, tgtX: 200, tgtY: 220, tgtRot: 0 },
-                    { id: "p2", shape: "triangle", color: "#ef4444", w: 80, h: 80, tgtX: 200, tgtY: 110, tgtRot: 0 },
-                    { id: "p3", shape: "triangle", color: "#facc15", w: 60, h: 80, tgtX: 130, tgtY: 250, tgtRot: 270 },
-                    { id: "p4", shape: "triangle", color: "#facc15", w: 60, h: 80, tgtX: 270, tgtY: 250, tgtRot: 90 },
-                    { id: "p5", shape: "circle", color: "#22c55e", w: 40, h: 40, tgtX: 200, tgtY: 180, tgtRot: 0 },
-                    { id: "p6", shape: "circle", color: "#22c55e", w: 40, h: 40, tgtX: 200, tgtY: 240, tgtRot: 0 },
-                    { id: "p7", shape: "triangle", color: "#f97316", w: 60, h: 60, tgtX: 200, tgtY: 320, tgtRot: 180 }
-                ]
-            },
-            {
-                id: 'b11', difficulty: "むずかしい", theme: "ロボット", pieces: [
-                    { id: "p1", shape: "square", color: "#ef4444", w: 80, h: 80, tgtX: 200, tgtY: 140, tgtRot: 0 },
-                    { id: "p2", shape: "rectangle", color: "#3b82f6", w: 100, h: 120, tgtX: 200, tgtY: 250, tgtRot: 0 },
-                    { id: "p3", shape: "rectangle", color: "#facc15", w: 20, h: 80, tgtX: 130, tgtY: 230, tgtRot: 45 },
-                    { id: "p4", shape: "rectangle", color: "#facc15", w: 20, h: 80, tgtX: 270, tgtY: 230, tgtRot: 315 },
-                    { id: "p5", shape: "rectangle", color: "#22c55e", w: 30, h: 60, tgtX: 170, tgtY: 340, tgtRot: 0 },
-                    { id: "p6", shape: "rectangle", color: "#22c55e", w: 30, h: 60, tgtX: 230, tgtY: 340, tgtRot: 0 },
-                    { id: "p7", shape: "circle", color: "#f97316", w: 20, h: 20, tgtX: 180, tgtY: 130, tgtRot: 0 },
-                    { id: "p8", shape: "circle", color: "#f97316", w: 20, h: 20, tgtX: 220, tgtY: 130, tgtRot: 0 }
-                ]
-            },
-            {
-                id: 'b12', difficulty: "むずかしい", theme: "はな", pieces: [
-                    { id: "p1", shape: "circle", color: "#facc15", w: 40, h: 40, tgtX: 200, tgtY: 160, tgtRot: 0 },
-                    { id: "p2", shape: "semicircle", color: "#ec4899", w: 60, h: 60, tgtX: 200, tgtY: 110, tgtRot: 180 },
-                    { id: "p3", shape: "semicircle", color: "#ec4899", w: 60, h: 60, tgtX: 200, tgtY: 210, tgtRot: 0 },
-                    { id: "p4", shape: "semicircle", color: "#ec4899", w: 60, h: 60, tgtX: 150, tgtY: 160, tgtRot: 90 },
-                    { id: "p5", shape: "semicircle", color: "#ec4899", w: 60, h: 60, tgtX: 250, tgtY: 160, tgtRot: 270 },
-                    { id: "p6", shape: "rectangle", color: "#22c55e", w: 20, h: 100, tgtX: 200, tgtY: 270, tgtRot: 0 },
-                    { id: "p7", shape: "triangle", color: "#22c55e", w: 40, h: 40, tgtX: 170, tgtY: 260, tgtRot: 90 },
-                    { id: "p8", shape: "triangle", color: "#22c55e", w: 40, h: 40, tgtX: 230, tgtY: 260, tgtRot: 270 }
-                ]
-            },
-            {
-                id: 'b13', difficulty: "むずかしい", theme: "テトリス", pieces: [
-                    { id: "p1", shape: "tetris-t", color: "#facc15", w: 120, h: 80, tgtX: 200, tgtY: 160, tgtRot: 0 },
-                    { id: "p2", shape: "tetris-l", color: "#3b82f6", w: 80, h: 120, tgtX: 180, tgtY: 260, tgtRot: 0 },
-                    { id: "p3", shape: "square", color: "#ef4444", w: 40, h: 40, tgtX: 240, tgtY: 220, tgtRot: 0 },
-                    { id: "p4", shape: "circle", color: "#22c55e", w: 20, h: 20, tgtX: 240, tgtY: 280, tgtRot: 0 }
-                ]
-            }
+        // 黒系を除外した11色の高彩度パレット
+        const COLOR_PALETTE = [
+            "#ef4444", "#f97316", "#facc15", "#22c55e", "#3b82f6",
+            "#6366f1", "#a855f7", "#ec4899", "#06b6d4", "#84cc16", "#f43f5e"
         ];
 
-        // --- 100問ジェネレーター (プレビュー用) ---
-        const COLOR_PALETTE = ["#ef4444", "#3b82f6", "#facc15", "#22c55e", "#f97316", "#a855f7", "#ec4899", "#14b8a6"];
+        const RAW_EASY = [
+            "いえ|0,100,100,200,250,0|3,100,60,200,170,0",
+            "きのこ|4,120,120,200,200,180|1,40,80,200,240,0",
+            "き|2,80,80,200,160,0|1,20,100,200,250,0",
+            "アイス|4,80,80,200,200,180|3,80,120,200,260,180",
+            "ロケット|3,40,40,200,180,0|1,40,80,200,240,0",
+            "くるま|1,120,40,200,240,0|2,40,40,160,280,0|2,40,40,240,280,0",
+            "タワー|3,40,40,200,180,0|0,40,40,200,220,0|0,60,60,200,270,0",
+            "でんしゃ|1,100,40,200,240,0|0,40,40,230,200,0|2,30,30,170,275,0|2,30,30,230,275,0",
+            "どんぐり|4,100,100,200,200,0|0,20,20,200,190,0",
+            "マイク|2,60,60,200,170,0|1,20,100,200,250,0",
+            "！マーク|1,20,100,200,180,0|2,20,20,200,250,0",
+            "テント|3,100,100,200,240,0|3,40,40,200,240,0",
+            "ぼうし|4,80,80,200,200,0|1,120,20,200,250,0",
+            "コップ|0,80,80,200,240,0|4,80,80,200,280,180",
+            "かさ|4,120,120,200,180,0|1,10,80,200,280,0",
+            "ろうそく|1,20,100,200,250,0|3,20,40,200,180,0",
+            "えんぴつ|3,40,40,200,140,0|1,40,100,200,210,0|0,40,20,200,270,0",
+            "むしめがね|2,80,80,180,180,0|1,20,80,230,250,315",
+            "だんご|2,40,40,200,160,0|2,40,40,200,200,0|2,40,40,200,240,0|1,10,140,200,200,0",
+            "アレイ|2,60,60,140,200,0|2,60,60,260,200,0|1,60,20,200,200,0",
+            "テレビ|0,100,100,200,220,0|1,10,40,180,150,45|1,10,40,220,150,315",
+            "はな|2,40,40,200,180,0|2,40,40,160,220,0|2,40,40,240,220,0|2,40,40,200,260,0|1,10,100,200,330,0",
+            "キャンディ|2,60,60,200,200,0|3,40,40,150,200,270|3,40,40,250,200,90",
+            "りぼん|2,40,40,200,200,0|3,60,60,150,200,90|3,60,60,250,200,270",
+            "ゆきだるま|2,60,60,200,160,0|2,80,80,200,230,0",
+            "カメラ|1,100,60,200,220,0|2,40,40,200,220,0|0,20,20,230,180,0",
+            "やじるし|1,40,80,200,240,0|3,80,60,200,170,0",
+            "とんぼ|1,10,120,200,240,0|1,120,20,200,200,0|2,30,30,200,165,0",
+            "さくらんぼ|2,40,40,160,240,0|2,40,40,240,240,0|1,10,60,180,190,30|1,10,60,220,190,330",
+            "トンネル|4,120,120,200,220,0|0,60,60,170,250,0|0,60,60,230,250,0",
+            "ベル|4,80,80,200,180,0|1,100,20,200,230,0|2,20,20,200,250,0",
+            "スマホ|1,80,140,200,220,0|2,20,20,200,270,0",
+            "かばん|4,60,60,200,170,0|1,100,80,200,240,0"
+        ];
 
-        const generate100Stages = () => {
-            const stages = [];
-            let idCounter = 1;
-            const targetCounts = { 'かんたん': 30, 'ふつう': 40, 'むずかしい': 30 };
-            const currentCounts = { 'かんたん': 0, 'ふつう': 0, 'むずかしい': 0 };
+        const RAW_NORMAL = [
+            "ヨット|4,160,160,200,250,0|1,10,100,200,200,0|3,80,80,155,210,90|3,80,80,245,210,270",
+            "サボテン|1,30,120,200,260,0|1,40,20,165,250,0|1,20,40,145,220,0|1,40,20,235,220,0|1,20,40,255,190,0",
+            "かえる|4,120,120,200,240,0|2,40,40,160,220,0|2,40,40,240,220,0|3,40,40,140,280,0|3,40,40,260,280,0",
+            "ロボット|0,60,60,200,150,0|1,80,60,200,210,0|1,20,60,150,210,0|1,20,60,250,210,0|1,20,80,180,280,0|1,20,80,220,280,0",
+            "おしろ|1,120,60,200,270,0|1,40,80,120,230,0|1,40,80,280,230,0|3,40,40,120,170,0|3,40,40,280,170,0",
+            "めがね|2,60,60,150,220,0|2,60,60,250,220,0|1,40,10,200,220,0|1,40,10,100,220,0|1,40,10,300,220,0",
+            "とり|2,80,80,200,200,0|3,40,40,140,200,270|3,60,60,270,200,90|1,10,40,180,260,0|1,10,40,220,260,0",
+            "さかな|1,100,60,200,220,0|3,60,60,120,220,270|3,60,60,280,220,90|3,40,20,200,180,0|3,40,20,200,260,180",
+            "かざぐるま|0,40,40,200,200,0|3,60,60,200,150,0|3,60,60,200,250,180|3,60,60,150,200,270|3,60,60,250,200,90|1,10,100,200,330,0",
+            "U.F.O.|4,120,120,200,180,180|1,160,40,200,200,0|2,20,20,160,230,0|2,20,20,200,230,0|2,20,20,240,230,0",
+            "いぬ|2,60,60,140,160,0|3,40,40,120,120,315|3,40,40,160,120,45|1,100,60,220,200,0|1,20,60,180,260,0|1,20,60,260,260,0",
+            "ねこ|2,60,60,200,160,0|3,40,40,170,120,315|3,40,40,230,120,45|4,100,100,200,230,0|1,10,60,260,240,45",
+            "ぶた|2,80,80,200,200,0|2,30,30,200,210,0|3,30,30,160,150,315|3,30,30,240,150,45",
+            "ひこうき|1,120,30,200,200,0|3,60,60,200,155,0|3,60,60,200,245,180|3,40,40,120,200,270",
+            "トラック|1,100,60,200,240,0|0,40,40,270,260,0|2,30,30,170,285,0|2,30,30,270,285,0",
+            "ふね|4,140,140,200,280,0|1,10,80,200,190,0|3,60,60,165,190,90|3,60,60,235,190,270|2,20,20,200,260,0",
+            "せんすいかん|1,120,60,200,240,0|4,60,60,110,240,90|4,60,60,290,240,270|1,20,40,200,190,0",
+            "ギター|2,60,60,200,260,0|2,40,40,200,180,0|1,10,100,200,100,0",
+            "ピアノ|1,100,60,200,200,0|1,120,20,200,240,0|1,10,60,150,280,0|1,10,60,250,280,0",
+            "ラッパ|3,60,60,140,200,270|1,80,20,210,200,0|2,40,40,270,200,0",
+            "イス|0,60,60,200,240,0|1,10,80,170,170,0|1,10,60,170,300,0|1,10,60,230,300,0",
+            "テーブル|1,140,20,200,200,0|1,20,80,150,250,0|1,20,80,250,250,0",
+            "ベッド|1,140,40,200,240,0|1,20,80,120,220,0|1,20,60,280,230,0",
+            "とけい|2,80,80,200,200,0|1,10,30,200,180,0|1,30,10,220,200,0",
+            "はさみ|1,60,10,180,180,45|1,60,10,180,220,315|2,30,30,230,150,0|2,30,30,230,250,0",
+            "スコップ|4,60,60,200,260,180|1,60,60,200,280,0|1,10,100,200,160,0|1,40,10,200,110,0",
+            "かぎ|2,40,40,140,200,0|1,100,20,210,200,0|1,20,30,240,225,0|1,20,30,270,225,0",
+            "ランプ|3,80,60,200,170,0|1,10,80,200,240,0|4,60,60,200,280,180",
+            "ポット|2,80,80,200,240,0|1,60,20,200,190,0|3,40,40,140,220,270|4,40,40,260,240,270",
+            "アイロン|3,100,60,150,240,270|1,100,60,250,240,0|1,80,20,250,190,0",
+            "じてんしゃ|2,60,60,140,260,0|2,60,60,260,260,0|1,10,100,170,220,45|1,10,100,230,220,315|1,40,10,200,180,0",
+            "パソコン|1,120,80,200,180,0|1,140,20,200,240,0|1,40,20,200,260,0",
+            "ほん|1,80,100,150,200,0|1,80,100,250,200,0"
+        ];
 
-            while (stages.length < 100) {
-                for (const base of BASE_STAGES) {
-                    if (currentCounts[base.difficulty] < targetCounts[base.difficulty]) {
-                        const variationNum = Math.floor(currentCounts[base.difficulty] / BASE_STAGES.filter(s => s.difficulty === base.difficulty).length) + 1;
+        const RAW_HARD = [
+            "ロケット2|3,80,80,200,120,0|1,80,120,200,220,0|3,80,40,140,260,270|3,80,40,260,260,90|3,40,40,200,300,180",
+            "にんぎょう|2,60,60,200,130,0|1,80,100,200,210,0|1,20,80,150,200,0|1,20,80,250,200,0|1,30,80,185,300,0|1,30,80,215,300,0",
+            "じょうへき|1,160,40,200,280,0|1,40,60,140,230,0|1,40,60,260,230,0|1,40,40,200,240,0|3,40,40,140,180,0|3,40,40,200,200,0|3,40,40,260,180,0",
+            "せんしゃ|1,160,40,200,280,0|4,100,100,200,260,180|1,80,10,110,235,0|2,40,40,140,320,0|2,40,40,200,320,0|2,40,40,260,320,0",
+            "けん|3,60,80,200,80,0|1,20,120,200,180,0|1,100,20,200,250,0|1,20,40,200,280,0|2,40,40,200,320,0",
+            "おおかみ|0,60,60,200,180,0|3,40,40,180,130,0|3,40,40,220,130,0|1,80,40,200,230,0|1,20,60,170,280,0|1,20,60,230,280,0|1,60,20,270,220,0",
+            "かたつむり|2,100,100,150,220,0|1,120,40,260,250,0|1,20,60,280,200,0|2,20,20,270,160,0|2,20,20,290,160,0",
+            "かに|1,80,60,200,240,0|4,60,60,130,240,180|4,60,60,270,240,180|1,20,40,160,190,0|1,20,40,240,190,0|2,30,30,160,155,0|2,30,30,240,155,0",
+            "ちょうちょ2|1,20,100,200,220,0|3,80,80,150,200,90|3,80,80,250,200,270|3,60,60,160,270,90|3,60,60,240,270,270|2,20,20,190,160,0|2,20,20,210,160,0",
+            "クジラ|4,160,160,200,220,180|1,160,40,200,240,0|3,60,60,100,240,270|3,40,40,300,240,90",
+            "サメ|3,120,80,140,240,270|1,100,80,250,240,0|3,60,60,250,170,0|3,40,40,320,240,90",
+            "イカ|3,80,80,200,120,0|1,80,100,200,210,0|1,10,80,170,300,0|1,10,80,190,300,0|1,10,80,210,300,0|1,10,80,230,300,0",
+            "タコ|2,100,100,200,150,0|1,10,80,160,240,0|1,10,80,180,240,0|1,10,80,200,240,0|1,10,80,220,240,0|1,10,80,240,240,0",
+            "カブトムシ|4,60,60,200,170,0|4,100,100,200,220,180|1,10,40,190,120,0|1,10,40,210,120,0|1,40,10,140,220,330|1,40,10,260,220,30",
+            "クワガタ|4,60,60,200,170,0|4,100,100,200,220,180|4,40,40,180,120,90|4,40,40,220,120,270|1,40,10,140,220,330|1,40,10,260,220,30",
+            "ロボット2|0,80,80,200,140,0|1,100,100,200,230,0|1,20,80,140,230,0|1,20,80,260,230,0|1,30,80,175,320,0|1,30,80,225,320,0|2,20,20,170,140,0|2,20,20,230,140,0",
+            "ロボいぬ|1,100,60,200,230,0|0,60,60,120,170,0|3,40,40,100,130,315|1,20,40,140,210,0|1,20,60,160,280,0|1,20,60,240,280,0|1,10,60,270,190,45",
+            "おしろ2|0,100,80,200,260,0|1,40,120,130,240,0|1,40,120,270,240,0|3,40,40,130,160,0|3,40,40,270,160,0|3,100,60,200,190,0",
+            "うちゅうせん|4,100,100,200,180,0|1,160,40,200,250,0|3,40,40,100,250,270|3,40,40,300,250,90|1,20,40,160,290,0|1,20,40,240,290,0",
+            "しょうぼう|1,140,60,200,240,0|0,60,60,100,240,0|1,10,120,200,180,90|2,30,30,130,285,0|2,30,30,250,285,0|0,20,20,100,190,0",
+            "きゅうきゅう|1,160,80,200,230,0|0,40,40,200,230,0|1,10,40,200,230,90|1,10,40,200,230,0|2,40,40,150,290,0|2,40,40,250,290,0",
+            "ショベルカー|1,100,60,180,240,0|2,40,40,150,290,0|2,40,40,210,290,0|1,80,20,280,240,45|4,40,40,330,280,135",
+            "クレーンしゃ|1,120,40,180,260,0|2,30,30,140,295,0|2,30,30,220,295,0|1,100,10,250,180,315|2,20,20,300,240,0",
+            "ほうだい|1,80,40,200,260,0|4,60,60,200,230,0|1,60,20,140,210,330|2,40,40,180,280,0|2,40,40,220,280,0",
+            "ヘリコプター2|4,100,100,180,220,90|1,80,100,220,220,0|1,60,20,290,220,0|3,40,40,340,220,90|1,160,10,220,165,0|1,10,20,200,280,0|1,100,10,200,295,0",
+            "ティラノ|4,80,80,240,160,0|1,60,100,200,230,45|1,80,20,120,270,315|1,20,60,210,300,0|1,20,40,260,210,45",
+            "らいおん|2,80,80,200,160,0|3,40,40,150,120,315|3,40,40,250,120,45|3,40,40,120,160,270|3,40,40,280,160,90|1,80,60,200,230,0|1,20,60,170,290,0|1,20,60,230,290,0",
+            "ぞう|2,80,80,240,160,0|1,100,60,150,200,0|1,20,80,120,270,0|1,20,80,180,270,0|1,20,100,280,230,0",
+            "きりん|1,40,30,240,120,0|1,20,100,200,180,0|1,80,40,150,250,0|1,10,80,120,310,0|1,10,80,180,310,0",
+            "わに|1,120,40,200,240,0|1,80,30,300,245,0|3,40,40,160,200,0|3,40,40,200,200,0|3,40,40,240,200,0",
+            "ゆうしゃ|2,40,40,200,140,0|1,60,80,200,200,0|1,10,60,160,200,0|1,10,60,240,200,0|1,20,60,185,270,0|1,20,60,215,270,0|3,40,40,200,100,0",
+            "まほうつかい|3,60,80,200,120,0|2,40,40,200,180,0|3,100,100,200,270,0|1,10,120,260,220,0|0,20,20,260,150,0",
+            "ドラゴン|3,60,60,260,160,90|1,80,40,200,220,0|3,80,80,150,170,0|1,60,20,130,250,315|1,20,40,180,260,0|1,20,40,220,260,0"
+        ];
 
-                        const pieces = base.pieces.map(p => {
-                            let newColor = p.color;
-                            if (variationNum > 1 && p.color !== "#1f2937" && p.color !== "#d1d5db" && p.color !== "#94a3b8") {
-                                const colorIdx = COLOR_PALETTE.indexOf(p.color);
-                                if (colorIdx !== -1) {
-                                    newColor = COLOR_PALETTE[(colorIdx + variationNum) % COLOR_PALETTE.length];
-                                }
-                            }
-                            return { ...p, color: newColor };
-                        });
-
-                        stages.push({
-                            id: idCounter++,
-                            difficulty: base.difficulty,
-                            theme: variationNum === 1 ? base.theme : `${base.theme} ${variationNum}`,
-                            pieces: pieces
-                        });
-                        currentCounts[base.difficulty]++;
-
-                        if (stages.length >= 100) break;
-                    }
+        const parseData = (dataArray, difficulty, startIndex) => {
+            return dataArray.map((str, idx) => {
+                const parts = str.split('|');
+                const theme = parts[0];
+                const pieces = [];
+                for (let i = 1; i < parts.length; i++) {
+                    const [sIdx, w, h, x, y, rot] = parts[i].split(',').map(Number);
+                    pieces.push({
+                        id: `p${i}`,
+                        shape: SHAPES[sIdx],
+                        w, h, tgtX: x, tgtY: y, tgtRot: rot,
+                        color: COLOR_PALETTE[(i - 1) % COLOR_PALETTE.length]
+                    });
                 }
-            }
-            return stages;
+                return { id: startIndex + idx, difficulty, theme, pieces };
+            });
         };
 
-        const STAGES = generate100Stages();
+        const STAGES = [
+            ...parseData(RAW_EASY, "かんたん", 1),
+            ...parseData(RAW_NORMAL, "ふつう", 34),
+            ...parseData(RAW_HARD, "むずかしい", 67)
+        ];
 
         const DIFFICULTY_COLORS = {
             'かんたん': '#4ade80',
@@ -247,16 +222,18 @@
         };
 
         // --- SVG図形コンポーネント ---
-        const PieceShape = ({ piece, isTarget, isForegroundTarget }) => {
+        const PieceShape = ({ piece, isSilhouette }) => {
             const { shape, w, h, color } = piece;
-            const fill = isForegroundTarget ? "rgba(255,255,255,0.4)" : (isTarget ? "#cbd5e1" : color);
-            const stroke = isTarget ? (isForegroundTarget ? "#475569" : "#94a3b8") : "rgba(0,0,0,0.15)";
-            const strokeWidth = isTarget ? (isForegroundTarget ? 4 : 3) : 4;
-            const strokeDasharray = isTarget ? "6,6" : "none";
+
+            // シルエットの場合はピース同士の境界を完全に消すため、塗りと線を同じ黒系の色にする
+            const fill = isSilhouette ? "#0f172a" : color;
+            const stroke = isSilhouette ? "#0f172a" : "rgba(0,0,0,0.15)";
+            const strokeWidth = isSilhouette ? 6 : 4;
+            const strokeDasharray = "none";
 
             let pathData = "";
             if (shape === 'square' || shape === 'rectangle') {
-                return <rect x={-w / 2} y={-h / 2} width={w} height={h} fill={fill} stroke={stroke} strokeWidth={strokeWidth} strokeDasharray={strokeDasharray} rx="12" />;
+                return <rect x={-w / 2} y={-h / 2} width={w} height={h} fill={fill} stroke={stroke} strokeWidth={strokeWidth} strokeDasharray={strokeDasharray} rx="6" />;
             } else if (shape === 'circle') {
                 return <circle cx={0} cy={0} r={w / 2} fill={fill} stroke={stroke} strokeWidth={strokeWidth} strokeDasharray={strokeDasharray} />;
             } else if (shape === 'triangle') {
@@ -264,12 +241,6 @@
             } else if (shape === 'semicircle') {
                 const r = w / 2;
                 pathData = `M ${-r},0 A ${r},${r} 0 0,0 ${r},0 Z`;
-            } else if (shape === 'tetris-t') {
-                const b = w / 3;
-                pathData = `M ${-w / 2},${-h / 2} L ${w / 2},${-h / 2} L ${w / 2},${-h / 2 + b} L ${b / 2},${-h / 2 + b} L ${b / 2},${h / 2} L ${-b / 2},${h / 2} L ${-b / 2},${-h / 2 + b} L ${-w / 2},${-h / 2 + b} Z`;
-            } else if (shape === 'tetris-l') {
-                const b = w / 2;
-                pathData = `M ${-w / 2},${-h / 2} L ${-w / 2 + b},${-h / 2} L ${-w / 2 + b},${h / 2 - b} L ${w / 2},${h / 2 - b} L ${w / 2},${h / 2} L ${-w / 2},${h / 2} Z`;
             }
 
             return <path d={pathData} fill={fill} stroke={stroke} strokeWidth={strokeWidth} strokeLinejoin="round" strokeDasharray={strokeDasharray} />;
@@ -285,10 +256,10 @@
         );
 
         const MiniPreview = ({ pieces }) => (
-            <svg viewBox="0 80 400 300" className="w-full h-24 drop-shadow-sm pointer-events-none">
-                {pieces.map(p => (
-                    <g key={p.id} transform={`translate(${p.tgtX}, ${p.tgtY}) rotate(${p.tgtRot})`}>
-                        <PieceShape piece={p} isTarget={false} />
+            <svg viewBox="0 60 400 320" className="w-full h-24 drop-shadow-sm pointer-events-none">
+                {pieces.map((p, idx) => (
+                    <g key={`${p.id}-${idx}`} transform={`translate(${p.tgtX}, ${p.tgtY}) rotate(${p.tgtRot})`}>
+                        <PieceShape piece={p} isSilhouette={true} />
                     </g>
                 ))}
             </svg>
@@ -309,18 +280,22 @@
 
                 const cols = 4;
                 const startX = 60;
-                const startY = 440;
+                const startY = 430;
                 const spacingX = 90;
                 const spacingY = 90;
 
                 const initPieces = stage.pieces.map((p, index) => {
                     const col = index % cols;
                     const row = Math.floor(index / cols);
+                    const initX = startX + col * spacingX;
+                    const initY = startY + row * spacingY;
                     return {
                         ...p,
                         locked: false,
-                        x: startX + col * spacingX,
-                        y: startY + row * spacingY,
+                        initX,      // パレットの初期位置を保存
+                        initY,
+                        x: initX,
+                        y: initY,
                         rot: Math.floor(Math.random() * 8) * 45
                     };
                 });
@@ -421,9 +396,12 @@
                 }
 
                 const SNAP_THRESHOLD = 50;
+                const BOUNDS_THRESHOLD = 60; // シルエット内とみなす大まかな距離
                 let finalRotNorm = ((finalRot % 360) + 360) % 360;
                 let snappedTarget = null;
+                let isInBounds = false;
 
+                // 1. 正解のスナップ判定
                 const sameShapeTargets = pieces.filter(p =>
                     !p.locked &&
                     p.shape === currentPiece.shape &&
@@ -454,7 +432,19 @@
                     }
                 }
 
+                // 2. 枠内判定（正解でスナップしなかった場合）
+                if (!snappedTarget) {
+                    for (const targetPiece of pieces) {
+                        const dist = Math.hypot(currentPiece.x - targetPiece.tgtX, currentPiece.y - targetPiece.tgtY);
+                        if (dist < BOUNDS_THRESHOLD) {
+                            isInBounds = true;
+                            break;
+                        }
+                    }
+                }
+
                 if (snappedTarget) {
+                    // 正解位置にスナップ！
                     playSnap();
                     triggerSnapEffect(snappedTarget.tgtX, snappedTarget.tgtY);
 
@@ -480,8 +470,12 @@
                         }
                         return p;
                     }));
+                } else if (isInBounds) {
+                    // シルエット内に置かれた（正解ではないのでそのまま置かれるだけ）
+                    setPieces(prev => prev.map(p => p.id === dragState.pieceId ? { ...p, rot: finalRot, x: currentPiece.x, y: currentPiece.y } : p));
                 } else {
-                    setPieces(prev => prev.map(p => p.id === dragState.pieceId ? { ...p, rot: finalRot } : p));
+                    // シルエットから外れているため初期位置に戻す
+                    setPieces(prev => prev.map(p => p.id === dragState.pieceId ? { ...p, rot: finalRot, x: p.initX, y: p.initY } : p));
                 }
 
                 setDragState(null);
@@ -541,7 +535,7 @@
                             <div className="flex flex-col h-full bg-slate-800">
                                 <div className="flex items-center p-4 border-b-4 border-slate-700">
                                     <button onClick={backToTitle} className="px-4 py-2 bg-slate-600 text-white font-bold rounded-full active:scale-95">もどる</button>
-                                    <div className="flex-1 text-center text-xl font-bold" style={{ color: DIFFICULTY_COLORS[selectedDifficulty] }}>
+                                    <div className="flex-1 text-center text-xl font-bold truncate mx-2" style={{ color: DIFFICULTY_COLORS[selectedDifficulty] }}>
                                         {selectedDifficulty}
                                     </div>
                                     <div className="w-16"></div>
@@ -556,7 +550,7 @@
                                             style={{ borderColor: DIFFICULTY_COLORS[selectedDifficulty] }}
                                         >
                                             <MiniPreview pieces={stage.pieces} />
-                                            <span className="mt-2 text-sm font-bold text-white">{stage.theme}</span>
+                                            <span className="mt-2 text-sm font-bold text-white truncate w-full text-center">{stage.theme}</span>
                                         </button>
                                     ))}
                                 </div>
@@ -569,11 +563,11 @@
                                 <div className="flex justify-between items-center p-4 bg-slate-800 border-b-4 border-slate-700 z-10">
                                     <button
                                         onClick={backToStageSelect}
-                                        className="px-4 py-2 bg-slate-600 text-white font-bold rounded-full active:scale-95"
+                                        className="px-4 py-2 bg-slate-600 text-white font-bold rounded-full active:scale-95 flex-shrink-0"
                                     >
                                         もどる
                                     </button>
-                                    <div className="text-xl font-bold truncate mx-2" style={{ color: DIFFICULTY_COLORS[currentStage.difficulty] }}>
+                                    <div className="text-lg font-bold truncate mx-2 text-center" style={{ color: DIFFICULTY_COLORS[currentStage.difficulty] }}>
                                         {currentStage.theme}
                                     </div>
                                     <button
@@ -591,20 +585,21 @@
                                     onPointerLeave={handlePointerUp}
                                 >
                                     <svg viewBox="0 0 400 600" className="w-full h-full absolute top-0 left-0">
-                                        <circle cx="200" cy="220" r="160" fill="#fef08a" className="pointer-events-none" />
-
+                                        <circle cx="200" cy="220" r="160" fill="#ffffff" className="pointer-events-none" opacity="0.15" />
                                         <rect x="0" y="380" width="400" height="220" fill="rgba(255,255,255,0.05)" className="pointer-events-none" />
 
                                         <g className={gameState === 'cleared' ? 'animate-bounce origin-center' : ''} style={{ transformOrigin: '200px 250px' }}>
 
+                                            {/* 黒いシルエット（正解の形） */}
                                             <g className="silhouettes-bg pointer-events-none">
-                                                {pieces.map(p => (
-                                                    <g key={`tgt-${p.id}`} transform={`translate(${p.tgtX}, ${p.tgtY}) rotate(${p.tgtRot})`}>
-                                                        <PieceShape piece={p} isTarget />
+                                                {pieces.map((p, idx) => (
+                                                    <g key={`tgt-${p.id}-${idx}`} transform={`translate(${p.tgtX}, ${p.tgtY}) rotate(${p.tgtRot})`}>
+                                                        <PieceShape piece={p} isSilhouette={true} />
                                                     </g>
                                                 ))}
                                             </g>
 
+                                            {/* 配置済み（ロックされた）ピース */}
                                             {pieces.filter(p => p.locked).map(p => (
                                                 <g
                                                     key={p.id}
@@ -613,31 +608,27 @@
                                                     className="cursor-pointer"
                                                     style={{ transition: 'transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)' }}
                                                 >
-                                                    <PieceShape piece={p} isTarget={false} />
+                                                    <PieceShape piece={p} isSilhouette={false} />
                                                     <Eyes />
                                                 </g>
                                             ))}
 
-                                            <g className="silhouettes-fg pointer-events-none">
-                                                {pieces.filter(p => !p.locked).map(p => (
-                                                    <g key={`tgt-fg-${p.id}`} transform={`translate(${p.tgtX}, ${p.tgtY}) rotate(${p.tgtRot})`}>
-                                                        <PieceShape piece={p} isTarget isForegroundTarget />
+                                            {/* 未配置のピース（ドラッグ中でないものは元に戻るアニメーションを適用） */}
+                                            {sortedPieces.filter(p => !p.locked).map(p => {
+                                                const isDragging = dragState?.pieceId === p.id;
+                                                return (
+                                                    <g
+                                                        key={p.id}
+                                                        transform={`translate(${p.x}, ${p.y}) rotate(${p.rot})`}
+                                                        onPointerDown={(e) => handlePointerDown(e, p.id)}
+                                                        className="cursor-pointer"
+                                                        style={{ transition: isDragging ? 'none' : 'transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)' }}
+                                                    >
+                                                        <PieceShape piece={p} isSilhouette={false} />
+                                                        <Eyes />
                                                     </g>
-                                                ))}
-                                            </g>
-
-                                            {sortedPieces.filter(p => !p.locked).map(p => (
-                                                <g
-                                                    key={p.id}
-                                                    transform={`translate(${p.x}, ${p.y}) rotate(${p.rot})`}
-                                                    onPointerDown={(e) => handlePointerDown(e, p.id)}
-                                                    className="cursor-pointer"
-                                                    style={{ transition: 'none' }}
-                                                >
-                                                    <PieceShape piece={p} isTarget={false} />
-                                                    <Eyes />
-                                                </g>
-                                            ))}
+                                                );
+                                            })}
                                         </g>
                                     </svg>
 
