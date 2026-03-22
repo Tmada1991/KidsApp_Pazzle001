@@ -21,7 +21,7 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect, useCallback } = React;
+        const { useState, useEffect, useCallback, useRef } = React;
 
         // --- 効果音ユーティリティ (Web Audio API) ---
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -77,7 +77,6 @@
         // SHAPES: 0=square, 1=rectangle, 2=circle, 3=triangle, 4=semicircle
         const SHAPES = ["square", "rectangle", "circle", "triangle", "semicircle"];
 
-        // 黒系を除外した11色の高彩度パレット
         const COLOR_PALETTE = [
             "#ef4444", "#f97316", "#facc15", "#22c55e", "#3b82f6",
             "#6366f1", "#a855f7", "#ec4899", "#06b6d4", "#84cc16", "#f43f5e"
@@ -229,21 +228,34 @@
             const fill = isSilhouette ? "#0f172a" : color;
             const stroke = isSilhouette ? "#0f172a" : "rgba(0,0,0,0.15)";
             const strokeWidth = isSilhouette ? 6 : 4;
-            const strokeDasharray = "none";
 
             let pathData = "";
-            if (shape === 'square' || shape === 'rectangle') {
-                return <rect x={-w / 2} y={-h / 2} width={w} height={h} fill={fill} stroke={stroke} strokeWidth={strokeWidth} strokeDasharray={strokeDasharray} rx="6" />;
-            } else if (shape === 'circle') {
-                return <circle cx={0} cy={0} r={w / 2} fill={fill} stroke={stroke} strokeWidth={strokeWidth} strokeDasharray={strokeDasharray} />;
-            } else if (shape === 'triangle') {
+            if (shape === 'triangle') {
                 pathData = `M 0,${-h / 2} L ${w / 2},${h / 2} L ${-w / 2},${h / 2} Z`;
             } else if (shape === 'semicircle') {
                 const r = w / 2;
                 pathData = `M ${-r},0 A ${r},${r} 0 0,0 ${r},0 Z`;
             }
 
-            return <path d={pathData} fill={fill} stroke={stroke} strokeWidth={strokeWidth} strokeLinejoin="round" strokeDasharray={strokeDasharray} />;
+            // 見た目の描画と、タッチ範囲を広げるための不可視レイヤーの両方を生成
+            const renderShape = (f, s, sw, peClass) => {
+                if (shape === 'square' || shape === 'rectangle') {
+                    return <rect x={-w / 2} y={-h / 2} width={w} height={h} fill={f} stroke={s} strokeWidth={sw} rx="6" className={peClass} strokeLinejoin="round" />;
+                } else if (shape === 'circle') {
+                    return <circle cx={0} cy={0} r={w / 2} fill={f} stroke={s} strokeWidth={sw} className={peClass} />;
+                } else {
+                    return <path d={pathData} fill={f} stroke={s} strokeWidth={sw} strokeLinejoin="round" className={peClass} />;
+                }
+            };
+
+            return (
+                <g>
+                    {/* タッチ判定用：図形より太い透明な枠を配置（シルエット時は不要） */}
+                    {!isSilhouette && renderShape("transparent", "transparent", 40, "pointer-events-auto cursor-pointer")}
+                    {/* 実際の描画内容：タッチイベントは上の透明枠に任せる */}
+                    {renderShape(fill, stroke, strokeWidth, isSilhouette ? "" : "pointer-events-none")}
+                </g>
+            );
         };
 
         const Eyes = () => (
@@ -273,6 +285,7 @@
             const [pieces, setPieces] = useState([]);
             const [dragState, setDragState] = useState(null);
             const [particles, setParticles] = useState([]);
+            const svgRef = useRef(null); // SVGの座標変換用にRefを追加
 
             const startGame = (stage) => {
                 initAudio();
@@ -292,7 +305,7 @@
                     return {
                         ...p,
                         locked: false,
-                        initX,      // パレットの初期位置を保存
+                        initX,
                         initY,
                         x: initX,
                         y: initY,
@@ -344,6 +357,16 @@
                 }, 600);
             };
 
+            // 画面の座標をSVG内の座標(400x600)に正確に変換する関数
+            const getSvgPoint = (e) => {
+                if (!svgRef.current) return { x: e.clientX, y: e.clientY };
+                const svg = svgRef.current;
+                const pt = svg.createSVGPoint();
+                pt.x = e.clientX;
+                pt.y = e.clientY;
+                return pt.matrixTransform(svg.getScreenCTM().inverse());
+            };
+
             const handlePointerDown = (e, pieceId) => {
                 initAudio();
                 if (gameState !== 'playing') return;
@@ -353,11 +376,12 @@
                 if (piece.locked) return;
 
                 e.target.setPointerCapture(e.pointerId);
+                const pt = getSvgPoint(e);
                 setDragState({
                     pieceId,
                     pointerId: e.pointerId,
-                    startX: e.clientX,
-                    startY: e.clientY,
+                    startX: pt.x,
+                    startY: pt.y,
                     initPieceX: piece.x,
                     initPieceY: piece.y,
                     hasMoved: false
@@ -367,10 +391,11 @@
             const handlePointerMove = useCallback((e) => {
                 if (!dragState || dragState.pointerId !== e.pointerId) return;
 
-                const dx = e.clientX - dragState.startX;
-                const dy = e.clientY - dragState.startY;
+                const pt = getSvgPoint(e);
+                const dx = pt.x - dragState.startX;
+                const dy = pt.y - dragState.startY;
 
-                if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+                if (!dragState.hasMoved && (Math.abs(dx) > 2 || Math.abs(dy) > 2)) {
                     setDragState(prev => prev ? { ...prev, hasMoved: true } : null);
                 }
 
@@ -395,13 +420,13 @@
                     finalRot = (finalRot + 45) % 360;
                 }
 
-                const SNAP_THRESHOLD = 50;
-                const BOUNDS_THRESHOLD = 60; // シルエット内とみなす大まかな距離
+                // スナップ判定の閾値を厳しくし、ズレてハマるのを防ぐ (50 -> 25)
+                const SNAP_THRESHOLD = 25;
+                const BOUNDS_THRESHOLD = 60;
                 let finalRotNorm = ((finalRot % 360) + 360) % 360;
                 let snappedTarget = null;
                 let isInBounds = false;
 
-                // 1. 正解のスナップ判定
                 const sameShapeTargets = pieces.filter(p =>
                     !p.locked &&
                     p.shape === currentPiece.shape &&
@@ -432,7 +457,6 @@
                     }
                 }
 
-                // 2. 枠内判定（正解でスナップしなかった場合）
                 if (!snappedTarget) {
                     for (const targetPiece of pieces) {
                         const dist = Math.hypot(currentPiece.x - targetPiece.tgtX, currentPiece.y - targetPiece.tgtY);
@@ -444,7 +468,6 @@
                 }
 
                 if (snappedTarget) {
-                    // 正解位置にスナップ！
                     playSnap();
                     triggerSnapEffect(snappedTarget.tgtX, snappedTarget.tgtY);
 
@@ -471,10 +494,8 @@
                         return p;
                     }));
                 } else if (isInBounds) {
-                    // シルエット内に置かれた（正解ではないのでそのまま置かれるだけ）
                     setPieces(prev => prev.map(p => p.id === dragState.pieceId ? { ...p, rot: finalRot, x: currentPiece.x, y: currentPiece.y } : p));
                 } else {
-                    // シルエットから外れているため初期位置に戻す
                     setPieces(prev => prev.map(p => p.id === dragState.pieceId ? { ...p, rot: finalRot, x: p.initX, y: p.initY } : p));
                 }
 
@@ -507,15 +528,16 @@
             const hasNextStage = currentStage && STAGES.filter(s => s.difficulty === currentStage.difficulty).findIndex(s => s.id === currentStage.id) < STAGES.filter(s => s.difficulty === currentStage.difficulty).length - 1;
 
             return (
-                <div className="w-full h-screen bg-slate-100 flex justify-center items-center overflow-hidden font-sans select-none touch-none">
-                    <div className="w-full max-w-[400px] h-[600px] bg-slate-800 relative shadow-2xl overflow-hidden flex flex-col md:rounded-2xl">
+                // 画面全体を覆い、タブレット等の広い画面でもアスペクト比を保って中央に表示させる
+                <div className="w-full h-[100dvh] bg-slate-900 md:bg-slate-100 flex justify-center items-center overflow-hidden font-sans select-none touch-none">
+                    <div className="w-full h-full max-w-2xl md:max-h-[900px] md:h-auto md:aspect-[2/3] bg-slate-800 relative shadow-2xl flex flex-col md:rounded-2xl overflow-hidden">
 
                         {/* --- タイトル画面 --- */}
                         {gameState === 'title' && (
                             <div className="flex flex-col items-center justify-center h-full p-6 space-y-8 bg-slate-800">
-                                <h1 className="text-4xl font-black text-white tracking-wider">かたちパズル</h1>
-                                <p className="text-slate-300 font-bold text-lg">あそぶ レベル を えらんでね</p>
-                                <div className="flex flex-col w-full space-y-4">
+                                <h1 className="text-4xl md:text-5xl font-black text-white tracking-wider">かたちパズル</h1>
+                                <p className="text-slate-300 font-bold text-lg md:text-xl">あそぶ レベル を えらんでね</p>
+                                <div className="flex flex-col w-full max-w-sm space-y-4">
                                     {['かんたん', 'ふつう', 'むずかしい'].map(diff => (
                                         <button
                                             key={diff}
@@ -535,13 +557,14 @@
                             <div className="flex flex-col h-full bg-slate-800">
                                 <div className="flex items-center p-4 border-b-4 border-slate-700">
                                     <button onClick={backToTitle} className="px-4 py-2 bg-slate-600 text-white font-bold rounded-full active:scale-95">もどる</button>
-                                    <div className="flex-1 text-center text-xl font-bold truncate mx-2" style={{ color: DIFFICULTY_COLORS[selectedDifficulty] }}>
+                                    <div className="flex-1 text-center text-xl md:text-2xl font-bold truncate mx-2" style={{ color: DIFFICULTY_COLORS[selectedDifficulty] }}>
                                         {selectedDifficulty}
                                     </div>
                                     <div className="w-16"></div>
                                 </div>
-                                <div className="flex-1 p-6 grid grid-cols-2 gap-4 overflow-y-auto content-start">
-                                    <div className="col-span-2 text-center text-slate-300 font-bold mb-2">どれを つくる？</div>
+                                {/* 画面幅が広いときは3列にして見やすくする */}
+                                <div className="flex-1 p-6 grid grid-cols-2 sm:grid-cols-3 gap-4 overflow-y-auto content-start">
+                                    <div className="col-span-2 sm:col-span-3 text-center text-slate-300 font-bold mb-2">どれを つくる？</div>
                                     {availableStages.map((stage) => (
                                         <button
                                             key={stage.id}
@@ -567,7 +590,7 @@
                                     >
                                         もどる
                                     </button>
-                                    <div className="text-lg font-bold truncate mx-2 text-center" style={{ color: DIFFICULTY_COLORS[currentStage.difficulty] }}>
+                                    <div className="text-lg md:text-xl font-bold truncate mx-2 text-center" style={{ color: DIFFICULTY_COLORS[currentStage.difficulty] }}>
                                         {currentStage.theme}
                                     </div>
                                     <button
@@ -584,13 +607,12 @@
                                     onPointerUp={handlePointerUp}
                                     onPointerLeave={handlePointerUp}
                                 >
-                                    <svg viewBox="0 0 400 600" className="w-full h-full absolute top-0 left-0">
+                                    <svg ref={svgRef} viewBox="0 0 400 600" className="w-full h-full absolute top-0 left-0">
                                         <circle cx="200" cy="220" r="160" fill="#ffffff" className="pointer-events-none" opacity="0.15" />
                                         <rect x="0" y="380" width="400" height="220" fill="rgba(255,255,255,0.05)" className="pointer-events-none" />
 
                                         <g className={gameState === 'cleared' ? 'animate-bounce origin-center' : ''} style={{ transformOrigin: '200px 250px' }}>
 
-                                            {/* 黒いシルエット（正解の形） */}
                                             <g className="silhouettes-bg pointer-events-none">
                                                 {pieces.map((p, idx) => (
                                                     <g key={`tgt-${p.id}-${idx}`} transform={`translate(${p.tgtX}, ${p.tgtY}) rotate(${p.tgtRot})`}>
@@ -599,13 +621,11 @@
                                                 ))}
                                             </g>
 
-                                            {/* 配置済み（ロックされた）ピース */}
                                             {pieces.filter(p => p.locked).map(p => (
                                                 <g
                                                     key={p.id}
                                                     transform={`translate(${p.x}, ${p.y}) rotate(${p.rot})`}
                                                     onPointerDown={(e) => handlePointerDown(e, p.id)}
-                                                    className="cursor-pointer"
                                                     style={{ transition: 'transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)' }}
                                                 >
                                                     <PieceShape piece={p} isSilhouette={false} />
@@ -613,7 +633,6 @@
                                                 </g>
                                             ))}
 
-                                            {/* 未配置のピース（ドラッグ中でないものは元に戻るアニメーションを適用） */}
                                             {sortedPieces.filter(p => !p.locked).map(p => {
                                                 const isDragging = dragState?.pieceId === p.id;
                                                 return (
@@ -621,7 +640,6 @@
                                                         key={p.id}
                                                         transform={`translate(${p.x}, ${p.y}) rotate(${p.rot})`}
                                                         onPointerDown={(e) => handlePointerDown(e, p.id)}
-                                                        className="cursor-pointer"
                                                         style={{ transition: isDragging ? 'none' : 'transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)' }}
                                                     >
                                                         <PieceShape piece={p} isSilhouette={false} />
@@ -692,7 +710,6 @@
             );
         }
 
-        // --- Reactのレンダリング ---
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
     </script>
